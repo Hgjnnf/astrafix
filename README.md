@@ -1,1 +1,3 @@
-# nvd-2024-25
+# Astrafix
+
+Project for New Venture Design 2024/25
