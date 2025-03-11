@@ -162,7 +162,7 @@ const char index_web[] = R"rawliteral(
         <title>ESP32 Camera Stream & Temperature</title>
         <script>
           // Create an EventSource to receive temperature updates from the /temperature endpoint
-          var tempSource = new EventSource("/temperature");
+          var tempSource = new EventSource("http://192.168.4.1:83/temperature");
           tempSource.onmessage = function(event) {
               try {
                   // Parse the JSON data from the SSE event
@@ -181,7 +181,7 @@ const char index_web[] = R"rawliteral(
       </head>
       <body>
         <h1>ESP32 Camera Stream</h1>
-        <img src="/stream" style="transform:rotate(180deg); width:100%; max-width:800px;">
+        <img src="http://192.168.4.1:82/stream" style="transform:rotate(180deg); width:100%; max-width:800px;">
         <h2>Temperature Reading</h2>
         <div id="temp">Loading temperature...</div>
       </body>
@@ -227,7 +227,7 @@ static esp_err_t temp_handler(httpd_req_t *req) {
         }
         
         // Delay between readings (e.g., 1 second)
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        vTaskDelay(100 / portTICK_PERIOD_MS);
     }
     
     // Send a final empty chunk to signal the end of the response
@@ -241,7 +241,7 @@ void startServer() {
 
     // Register URI handler for the index page
     httpd_uri_t index_uri = {
-        .uri = "/",
+        .uri = "/index",
         .method = HTTP_GET,
         .handler = index_handler,
         .user_ctx = NULL
@@ -260,10 +260,12 @@ void startServer() {
         .method = HTTP_GET,
         .handler = temp_handler,
         .user_ctx = NULL
-    }
+    };
 
     ra_filter_init(&ra_filter, 20);
 
+    config.server_port += 1;
+    config.ctrl_port   += 1;
     ESP_LOGI(TAG, "Starting camera server on port: '%d'", config.server_port);
     if (httpd_start(&camera_httpd, &config) == ESP_OK) {
         httpd_register_uri_handler(camera_httpd, &index_uri);
@@ -276,6 +278,9 @@ void startServer() {
         httpd_register_uri_handler(stream_httpd, &stream_uri);
     }
 
+    config.server_port += 1;
+    config.ctrl_port   += 1;
+    ESP_LOGI(TAG, "Starting temp server on port: '%d'", config.server_port);
     if (httpd_start(&temp_httpd, &config) == ESP_OK) {
         httpd_register_uri_handler(temp_httpd, &temp_uri);
     }
