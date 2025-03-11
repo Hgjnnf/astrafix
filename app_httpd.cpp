@@ -32,8 +32,20 @@ static const char *_STREAM_CONTENT_TYPE = "multipart/x-mixed-replace;boundary=" 
 static const char *_STREAM_BOUNDARY  = "\r\n--" PART_BOUNDARY "\r\n";
 static const char *_STREAM_PART      = "Content-Type: image/jpeg\r\nContent-Length: %u\r\nX-Timestamp: %d.%06d\r\n\r\n";
 
+const int analogPin = 1; // Use an appropriate ADC pin for ESP32; for Arduino, it might be A0
+
+// Voltage divider constants
+const float V_SUPPLY = 3.3;  // Adjust for your board (e.g., 3.3V for ESP32, 5V for Arduino)
+const float R_FIXED = 100000.0;  // Fixed resistor value in ohms
+
+// Thermistor parameters (example values for a 10k thermistor)
+const float R0 = 100000.0;   // Resistance at 25°C (in ohms)
+const float THERMISTOR_T0 = 298.15;    // 25°C in Kelvin
+const float beta = 3950.0;  // Beta coefficient
+
 httpd_handle_t stream_httpd = NULL;
 httpd_handle_t camera_httpd = NULL;
+httpd_handle_t temp_httpd = NULL;
 
 typedef struct {
     size_t size;  // number of values used for filtering
@@ -145,16 +157,36 @@ static esp_err_t stream_handler(httpd_req_t *req) {
 }
 
 const char index_web[] = R"rawliteral(
-<html>
-  <head>
-    <title>ESP32 Camera Stream</title>
-  </head>
-  <body>
-    <h1>ESP32 Camera Stream</h1>
-    <img src="/stream" style="transform:rotate(180deg); width:100%; max-width:800px;">
-  </body>
-</html>
-)rawliteral";
+    <html>
+      <head>
+        <title>ESP32 Camera Stream & Temperature</title>
+        <script>
+          // Create an EventSource to receive temperature updates from the /temperature endpoint
+          var tempSource = new EventSource("/temperature");
+          tempSource.onmessage = function(event) {
+              try {
+                  // Parse the JSON data from the SSE event
+                  var data = JSON.parse(event.data);
+                  // Update the temperature display element with the new reading
+                  document.getElementById("temp").innerText = "Temperature: " + data.temperature + " °C";
+              } catch (e) {
+                  console.error("Error parsing temperature data:", e);
+              }
+          };
+          tempSource.onerror = function(err) {
+              console.error("EventSource encountered an error:", err);
+              tempSource.close();
+          };
+        </script>
+      </head>
+      <body>
+        <h1>ESP32 Camera Stream</h1>
+        <img src="/stream" style="transform:rotate(180deg); width:100%; max-width:800px;">
+        <h2>Temperature Reading</h2>
+        <div id="temp">Loading temperature...</div>
+      </body>
+    </html>
+    )rawliteral";
 
 static esp_err_t index_handler(httpd_req_t *req) {
     esp_err_t err;
@@ -165,7 +197,45 @@ static esp_err_t index_handler(httpd_req_t *req) {
     return err;
 }
 
-void startCameraServer() {
+static esp_err_t temp_handler(httpd_req_t *req) {
+    // Set the response type to JSON and allow cross-origin requests
+    esp_err_t res = ESP_OK;
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+
+    while (true) {
+        int adcValue = analogRead(analogPin);
+        // For ESP32, ADC reading typically ranges from 0 to 4095
+        float voltage = (adcValue / 4095.0) * V_SUPPLY;
+        
+        // Calculate the thermistor resistance using voltage divider equation:
+        // R_thermistor = R_FIXED * ((V_SUPPLY / voltage) - 1)
+        float R_thermistor = R_FIXED * ((V_SUPPLY / voltage) - 1);
+        
+        // Calculate temperature using the Beta equation:
+        float temperatureK = 1.0 / ( (1.0/THERMISTOR_T0) + (1.0/beta) * log(R_thermistor / R0) );
+        float temperatureC = temperatureK - 273.15; // Convert Kelvin to Celsius
+
+        // Format the JSON response with only the temperature value
+        char response[64];
+        int len = snprintf(response, sizeof(response), "{\"temperature\": %.2f}\n", temperatureC);
+        
+        // Send the chunk; exit loop if an error occurs (e.g., client disconnect)
+        esp_err_t res = httpd_resp_send_chunk(req, response, len);
+        if (res != ESP_OK) {
+            break;
+        }
+        
+        // Delay between readings (e.g., 1 second)
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+    }
+    
+    // Send a final empty chunk to signal the end of the response
+    httpd_resp_send_chunk(req, NULL, 0);
+    return ESP_OK;
+}
+
+void startServer() {
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.max_uri_handlers = 16;
 
@@ -185,6 +255,13 @@ void startCameraServer() {
         .user_ctx = NULL
     };
 
+    httpd_uri_t temp_uri = {
+        .uri = "/temperature",
+        .method = HTTP_GET,
+        .handler = temp_handler,
+        .user_ctx = NULL
+    }
+
     ra_filter_init(&ra_filter, 20);
 
     ESP_LOGI(TAG, "Starting camera server on port: '%d'", config.server_port);
@@ -197,5 +274,9 @@ void startCameraServer() {
     ESP_LOGI(TAG, "Starting stream server on port: '%d'", config.server_port);
     if (httpd_start(&stream_httpd, &config) == ESP_OK) {
         httpd_register_uri_handler(stream_httpd, &stream_uri);
+    }
+
+    if (httpd_start(&temp_httpd, &config) == ESP_OK) {
+        httpd_register_uri_handler(temp_httpd, &temp_uri);
     }
 }

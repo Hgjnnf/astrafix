@@ -150,17 +150,6 @@
 const char* ssid = "ESP32_Camera_AP";
 const char* password = "12345678";
 
-const int analogPin = 1; // Use an appropriate ADC pin for ESP32; for Arduino, it might be A0
-
-// Voltage divider constants
-const float V_SUPPLY = 3.3;  // Adjust for your board (e.g., 3.3V for ESP32, 5V for Arduino)
-const float R_FIXED = 100000.0;  // Fixed resistor value in ohms
-
-// Thermistor parameters (example values for a 10k thermistor)
-const float R0 = 100000.0;   // Resistance at 25°C (in ohms)
-const float THERMISTOR_T0 = 298.15;    // 25°C in Kelvin
-const float beta = 3950.0;  // Beta coefficient
-
 // Create a basic WebServer instance on port 80 for a welcome page
 WebServer server(80);
 
@@ -194,9 +183,9 @@ void setup() {
   Serial.println("Local web server started on port 80");
 
   // Start the camera streaming server (defined in app_httpd.cpp)
-  startCameraServer();
+  startServer();
 
-  Serial.print("Camera Ready! Connect to: http://");
+  Serial.print("Camera and Thermistor Ready! Connect to: http://");
   Serial.print(WiFi.softAPIP());
   Serial.println(" to view the stream.");
 }
@@ -204,8 +193,6 @@ void setup() {
 void loop() {
   // Process basic HTTP server requests (for the welcome page)
   server.handleClient();
-  // Serial.println(analogRead(1));
-  thermistorRead();
 }
 
 void cameraInit(void) {
@@ -275,13 +262,13 @@ void thermistorRead(){
     float temperatureK = 1.0 / ( (1.0/THERMISTOR_T0) + (1.0/beta) * log(R_thermistor / R0) );
     float temperatureC = temperatureK - 273.15; // Convert Kelvin to Celsius
 
-    Serial.print("ADC Value: ");
-    Serial.print(adcValue);
-    Serial.print(" | Voltage: ");
-    Serial.print(voltage, 3);
-    Serial.print(" V | Resistance: ");
-    Serial.print(R_thermistor, 2);  
-    Serial.print(" ohms | Temperature: ");
-    Serial.print(temperatureC, 2);
-    Serial.println(" °C");
+    // Serial.print("ADC Value: ");
+    // Serial.print(adcValue);
+    // Serial.print(" | Voltage: ");
+    // Serial.print(voltage, 3);
+    // Serial.print(" V | Resistance: ");
+    // Serial.print(R_thermistor, 2);  
+    // Serial.print(" ohms | Temperature: ");
+    // Serial.print(temperatureC, 2);
+    // Serial.println(" °C");
 }
