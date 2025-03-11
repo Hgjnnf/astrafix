@@ -165,7 +165,7 @@ const char index_web[] = R"rawliteral(
           var tempSource = new EventSource("http://192.168.4.1:83/temperature");
           tempSource.onmessage = function(event) {
               try {
-                  // Parse the JSON data from the SSE event
+                  // Parse the JSON data received from the SSE stream
                   var data = JSON.parse(event.data);
                   // Update the temperature display element with the new reading
                   document.getElementById("temp").innerText = "Temperature: " + data.temperature + " °C";
@@ -186,7 +186,7 @@ const char index_web[] = R"rawliteral(
         <div id="temp">Loading temperature...</div>
       </body>
     </html>
-    )rawliteral";
+    )rawliteral";    
 
 static esp_err_t index_handler(httpd_req_t *req) {
     esp_err_t err;
@@ -200,7 +200,9 @@ static esp_err_t index_handler(httpd_req_t *req) {
 static esp_err_t temp_handler(httpd_req_t *req) {
     // Set the response type to JSON and allow cross-origin requests
     esp_err_t res = ESP_OK;
-    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_type(req, "text/event-stream");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
+    httpd_resp_set_hdr(req, "Connection", "keep-alive");
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
 
     while (true) {
@@ -216,12 +218,16 @@ static esp_err_t temp_handler(httpd_req_t *req) {
         float temperatureK = 1.0 / ( (1.0/THERMISTOR_T0) + (1.0/beta) * log(R_thermistor / R0) );
         float temperatureC = temperatureK - 273.15; // Convert Kelvin to Celsius
 
-        // Format the JSON response with only the temperature value
-        char response[64];
-        int len = snprintf(response, sizeof(response), "{\"temperature\": %.2f}\n", temperatureC);
+        // Format the JSON payload containing only the temperature
+        char json[64];
+        int json_len = snprintf(json, sizeof(json), "{\"temperature\": %.2f}", temperatureC);
         
-        // Send the chunk; exit loop if an error occurs (e.g., client disconnect)
-        esp_err_t res = httpd_resp_send_chunk(req, response, len);
+        // Format as SSE data: prefix with "data: " and end with two newlines
+        char sse_buffer[128];
+        int sse_len = snprintf(sse_buffer, sizeof(sse_buffer), "data: %s\n\n", json);
+        
+        // Send the SSE chunk; exit if an error occurs (e.g., client disconnects)
+        esp_err_t res = httpd_resp_send_chunk(req, sse_buffer, sse_len);
         if (res != ESP_OK) {
             break;
         }
