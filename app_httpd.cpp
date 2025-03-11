@@ -168,7 +168,7 @@ const char index_web[] = R"rawliteral(
                   // Parse the JSON data received from the SSE stream
                   var data = JSON.parse(event.data);
                   // Update the temperature display element with the new reading
-                  document.getElementById("temp").innerText = "Temperature: " + data.temperature + " °C";
+                  document.getElementById("temp").innerText = "Temperature: " + data.temperature + " Celsius";
               } catch (e) {
                   console.error("Error parsing temperature data:", e);
               }
@@ -178,11 +178,20 @@ const char index_web[] = R"rawliteral(
               tempSource.close();
           };
         </script>
+        <style>
+            #temp {
+                font-size: 64px;
+            }
+
+            h1 {
+                font-size: 100px;
+            }
+        </style>
       </head>
       <body>
         <h1>ESP32 Camera Stream</h1>
-        <img src="http://192.168.4.1:82/stream" style="transform:rotate(180deg); width:100%; max-width:800px;">
-        <h2>Temperature Reading</h2>
+        <img src="http://192.168.4.1:82/stream" style="transform:rotate(180deg); width:100%; max-width:100vw;">
+        <h1>Temperature Reading</h1>
         <div id="temp">Loading temperature...</div>
       </body>
     </html>
